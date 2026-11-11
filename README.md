@@ -43,6 +43,15 @@ src/audio  src/camera.js  src/input.js  src/main.js
 game.js         bundle esbuild de src/ (seule exception du site à la règle « sans build »)
 ```
 
+## Fiche technique
+
+Résumé de ce que fait le code, tenu à jour à chaque modification : le lire suffit pour vérifier une information sans relire tout le jeu.
+
+- **Build** : seul jeu avec build. Après toute modification de `src/`, reconstruire `game.js` : `npx esbuild src/main.js --bundle --minify --format=iife --alias:three=./lib/three.module.js --outfile=game.js`.
+- **Bus** : `assets/models/town-bus.glb` (`src/bus/Vehicle.js`) ; trafic `npc/*.glb` (`src/traffic/Kits.js`) ; piétons et voyageurs `proportional_low_poly_man__free_download.glb`.
+- **Caméras (C, `src/camera.js`)** : Vue externe, Cabine conducteur, Intérieur passagers.
+- **Sauvegarde** : `busCitySimulator.save.v1`.
+
 ## Crédits des modèles 3D
 
 Véhicules réels sous licence CC-BY (Sketchfab) : auteurs et licences dans `assets/models/CREDITS.md`.
