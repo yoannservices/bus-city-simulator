@@ -207,18 +207,20 @@ export class Traffic {
       if (c.stuck > 45 && Math.hypot(c.x - bus.x, c.z - bus.z) > 80) { this.leaveNode(c); this.respawn(c, bus); }
       else if (Math.hypot(c.x - bus.x, c.z - bus.z) > 450) { this.leaveNode(c); this.respawn(c, bus); }
     });
-    this.render();
+    this.render(bus);
   }
 
-  render() {
+  render(bus) {
     const d = this.dummy;
     if (this.real) {
+      // seules les voitures actives à moins de 260 m du bus sont dessinées (modèles de 20 000 à 40 000 triangles, ombre comprise)
+      const used = this.real.map(() => 0);
       this.cars.forEach((c) => {
-        const s = c.active ? 1 : 0;
-        d.rotation.set(0, c.h, 0); d.position.set(c.x, 0, c.z); d.scale.set(s, s, s); d.updateMatrix();
-        this.real[c.kit].inst.set(c.slot, d.matrix);
+        if (!c.active || (bus && Math.hypot(c.x - bus.x, c.z - bus.z) > 260)) return;
+        d.rotation.set(0, c.h, 0); d.position.set(c.x, 0, c.z); d.scale.set(1, 1, 1); d.updateMatrix();
+        this.real[c.kit].inst.set(used[c.kit]++, d.matrix);
       });
-      for (const k of this.real) k.inst.commit(k.n);
+      this.real.forEach((k, i) => k.inst.commit(used[i]));
       return;
     }
     this.cars.forEach((c, i) => {

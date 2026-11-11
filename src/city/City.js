@@ -2,50 +2,32 @@
 import * as THREE from 'three';
 import { G, P, ROAD, HALF, DIRS, rightOf, coord, inGrid, blockZone, nodes, nodeAt, CHARGERS } from './grid.js';
 import { Collision } from './Collision.js';
+import '../../../../assets/building-kit.js';
 import { allStops, LINES } from '../lines/Lines.js';
 
 const rng = (seed) => () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 const canvas = (w, h) => Object.assign(document.createElement('canvas'), { width: w, height: h });
 const dummy = new THREE.Object3D();
 
+// Archétypes de bâtiments : options du kit commun assets/building-kit.js (fenêtres en relief, portes, balcons, toits) + matériaux (m).
+// Repère du kit : façade principale (porte d'entrée, vitrine) vers +z, faîtage le long de w.
 const ARCH = {
-  tower1: { w: 22, d: 22, h: 72, wall: '#7f8da0', glass: '#1d2c3d', roof: '#666' },
-  tower2: { w: 20, d: 20, h: 96, wall: '#5f7388', glass: '#14202e', roof: '#555' },
-  tower3: { w: 24, d: 24, h: 55, wall: '#9a9186', glass: '#1d2c3d', roof: '#666' },
-  office: { w: 32, d: 26, h: 44, wall: '#a8a496', glass: '#26384a', shop: 1, roof: '#777' },
-  block: { w: 34, d: 30, h: 30, wall: '#b9a48c', glass: '#2b3b4c', shop: 1, roof: '#7a6f66' },
-  mid: { w: 28, d: 24, h: 21, wall: '#c4b7a2', glass: '#2b3b4c', shop: 1, roof: '#7a6f66' },
-  house: { w: 12, d: 10, h: 7, wall: '#d8c6a9', glass: '#33475b', roof: '#8a4b3a' },
-  house2: { w: 10, d: 12, h: 8, wall: '#c98f7a', glass: '#33475b', roof: '#5b6670' },
-  shop: { w: 34, d: 28, h: 8, wall: '#d9d4c7', glass: '#3a5266', shop: 1, roof: '#777' },
-  mall: { w: 62, d: 46, h: 12, wall: '#c9ced6', glass: '#26384a', shop: 1, roof: '#888' },
-  station: { w: 70, d: 34, h: 20, wall: '#a89a85', glass: '#26384a', shop: 1, roof: '#6b6b6b' },
-  depot: { w: 50, d: 26, h: 9, wall: '#8a8f96', glass: '#222', roof: '#666' },
+  tower1: { w: 22, d: 22, h: 72, fh: 3.6, gfh: 5, roof: 'flat', facade: 'curtain', mast: 16, m: { wall: '#7f8da0', style: 'concrete', frame: '#3c4652', glass: '#5a7a96' } },
+  tower2: { w: 20, d: 20, h: 96, fh: 3.6, gfh: 5, roof: 'flat', facade: 'curtain', mast: 20, m: { wall: '#5f7388', style: 'concrete', frame: '#2c3440', glass: '#4d6c88' } },
+  tower3: { w: 24, d: 24, h: 55, fh: 3.5, gfh: 4.5, roof: 'flat', door: '+z', doorType: 'block', win: [1.4, 1.8], bay: 3.2, tank: true, m: { wall: '#b4aa9c', style: 'stone', glass: '#2a3b4d' } },
+  office: { w: 32, d: 26, h: 44, fh: 3.5, roof: 'flat', facade: 'ribbon', shop: true, door: '-z', doorType: 'block', mast: 8, m: { wall: '#a8a496', style: 'stone', glass: '#26384a', awning: '#2b5d8a' } },
+  block: { w: 34, d: 30, h: 30, fh: 3.4, roof: 'flat', shop: true, door: '-z', doorType: 'block', balcony: true, tank: true, win: [1.4, 1.6], bay: 3.3, m: { wall: '#b9846c', style: 'brick', awning: '#b3262e' } },
+  mid: { w: 28, d: 24, h: 21, fh: 3.3, roof: 'flat', shop: true, door: '-z', doorType: 'block', balcony: 'alt', win: [1.3, 1.6], shutters: true, m: { wall: '#c4b7a2', style: 'stucco', shutter: '#6b8fa8', awning: '#2f7a4a' } },
+  house: { w: 12, d: 10, h: 5, fh: 2.5, roof: 'gable', rise: 3, shutters: true, quoins: true, win: [1.1, 1.25], m: { wall: '#d8c6a9', style: 'stucco', roof: 'tile' } },
+  house2: { w: 12, d: 10, h: 5.5, fh: 2.75, roof: 'gable', rise: 2.6, shutters: true, win: [1.1, 1.3], m: { wall: '#c98f7a', style: 'stucco', roof: 'slate' } },
+  shop: { w: 34, d: 28, h: 8, fh: 4, roof: 'flat', shop: ['+z'], door: false, m: { wall: '#d9d4c7', style: 'stone', awning: '#c98a1a' } },
+  mall: { w: 62, d: 46, h: 12, fh: 6, roof: 'flat', shop: ['+z'], door: '-z', doorType: 'block', win: [3, 2.2], bay: 6, m: { wall: '#c9ced6', style: 'concrete', awning: '#6a3a7a' } },
+  station: { w: 70, d: 34, h: 16, fh: 5, gfh: 6, roof: 'flat', shop: ['+z'], awning: false, door: '-z', doorType: 'block', doorW: 3.2, win: [2.2, 3], bay: 5, quoins: true, tank: false, m: { wall: '#cbbd9f', style: 'stone', roof: 'gravel', glass: '#2c4052' } },
+  depot: { w: 50, d: 26, h: 9, fh: 9, roof: 'flat', door: '+x', faces: ['-z', '+x', '-x'], win: [2.4, 1.1], bay: 5, plinth: false, equip: false, lintel: false,
+    openings: [-18, -6, 6, 18].map((o) => ({ face: '+z', s: o, w: 8, h: 5.6, type: 'garage' })), m: { wall: '#a9b0b8', style: 'metal', garage: '#d6d8da' } },
 };
-
-// façade : albédo + masque émissif (fenêtres allumées la nuit)
-function facade(wm, hm, a, rand) {
-  const ppm = 8, cw = Math.ceil(wm * ppm), ch = Math.ceil(hm * ppm);
-  const c1 = canvas(cw, ch), c2 = canvas(cw, ch), g = c1.getContext('2d'), e = c2.getContext('2d');
-  g.fillStyle = a.wall; g.fillRect(0, 0, cw, ch);
-  e.fillStyle = '#000'; e.fillRect(0, 0, cw, ch);
-  const floorH = 3.5, winW = 1.7, winH = 1.9, floors = Math.max(1, Math.floor(hm / floorH)), cols = Math.max(1, Math.floor(wm / 3.2));
-  for (let f = 0; f < floors; f++) {
-    const y = ch - (f + 1) * floorH * ppm + ((floorH - winH) / 2) * ppm;
-    if (f === 0 && a.shop) {
-      g.fillStyle = a.glass; g.fillRect(cw * 0.04, y - 6, cw * 0.92, winH * ppm + 8);
-      e.fillStyle = '#ffe9b0'; e.fillRect(cw * 0.04, y - 6, cw * 0.92, winH * ppm + 8);
-      continue;
-    }
-    for (let k = 0; k < cols; k++) {
-      const x = (k + 0.5) * (cw / cols) - (winW * ppm) / 2;
-      g.fillStyle = a.glass; g.fillRect(x, y, winW * ppm, winH * ppm);
-      if (rand() < 0.4) { e.fillStyle = rand() < 0.8 ? '#ffd98a' : '#bcd8ff'; e.fillRect(x, y, winW * ppm, winH * ppm); }
-    }
-  }
-  const mk = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
-  return { map: mk(c1), emissive: mk(c2) };
-}
+const K = BuildingKit(THREE);
+const yawTo = (fx, fz) => Math.atan2(fx, fz);   // cap qui tourne la façade +z du kit vers (fx, fz)
 
 function noiseTexture(size, base, spread, line) {
   const c = canvas(size, size), g = c.getContext('2d');
@@ -177,10 +159,18 @@ export class City {
   lots() {
     const { rand } = this;
     const place = {};                      // archétype -> [matrices]
-    const add = (id, x, z) => {
-      const a = ARCH[id];
-      (place[id] ??= []).push(this.M(x, a.h / 2 + 0.15, z));
-      this.col.addBox(x - a.w / 2, x + a.w / 2, z - a.d / 2, z + a.d / 2, 'building');
+    // yaw : la façade principale regarde la rue ; l'emprise de collision suit la rotation (w et d échangés à 90°)
+    const add = (id, x, z, yaw = 0) => {
+      const a = ARCH[id], q = Math.abs(Math.sin(yaw)) > 0.5, hw = (q ? a.d : a.w) / 2, hd = (q ? a.w : a.d) / 2;
+      (place[id] ??= []).push(this.M(x, 0.15, z, yaw));
+      this.col.addBox(x - hw, x + hw, z - hd, z + hd, 'building');
+    };
+    const facing = (ox, oz) => {   // vers le bord d'îlot le plus proche (au hasard pour un coin ou le centre)
+      const opts = [];
+      if (Math.abs(ox) >= Math.abs(oz) && ox) opts.push(yawTo(Math.sign(ox), 0));
+      if (Math.abs(oz) >= Math.abs(ox) && oz) opts.push(yawTo(0, Math.sign(oz)));
+      if (!opts.length) opts.push(yawTo(1, 0), yawTo(-1, 0), yawTo(0, 1), yawTo(0, -1));
+      return opts[Math.floor(rand() * opts.length)];
     };
     const grassLots = [], parkLots = [], rails = [], ballast = [], parkTrees = [];
     this.parkTrees = parkTrees;
@@ -190,13 +180,13 @@ export class City {
       if (zone === 'centre') {
         for (const ox of [-20, 20]) for (const oz of [-20, 20]) {
           const id = bi === 4 && bj === 4 ? pick(['tower1', 'tower2', 'tower2', 'tower3']) : pick(['tower1', 'tower3', 'office', 'block', 'mid', 'tower2']);
-          add(id, cx + ox, cz + oz);
+          add(id, cx + ox, cz + oz, facing(ox, oz));
         }
       } else if (zone === 'peripherie') {
         if (rand() < 0.15) {
           grassLots.push(this.M(cx, 0.16, cz, 0, 80, 1, 80));
           for (let t = 0; t < 14; t++) parkTrees.push([cx + (rand() - 0.5) * 70, cz + (rand() - 0.5) * 70]);
-        } else for (const ox of [-26, 0, 26]) for (const oz of [-26, 0, 26]) if (rand() < 0.85) add(rand() < 0.5 ? 'house' : 'house2', cx + ox + (rand() - 0.5) * 4, cz + oz + (rand() - 0.5) * 4);
+        } else for (const ox of [-26, 0, 26]) for (const oz of [-26, 0, 26]) if (rand() < 0.85) add(rand() < 0.5 ? 'house' : 'house2', cx + ox + (rand() - 0.5) * 4, cz + oz + (rand() - 0.5) * 4, facing(ox, oz));
       } else if (zone === 'commerce') {
         parkLots.push(this.M(cx, 0.16, cz, 0, 80, 1, 80));
         if (rand() < 0.5) add('mall', cx, cz - 14);
@@ -204,7 +194,7 @@ export class City {
       } else {
         // gare : (1,4) dépôt, (2,4) gare, (1,5) et (2,5) faisceau ferroviaire
         if (bi === 1 && bj === 4) { parkLots.push(this.M(cx, 0.16, cz, 0, 80, 1, 80)); add('depot', cx, cz - 25); }
-        else if (bi === 2 && bj === 4) { parkLots.push(this.M(cx, 0.16, cz, 0, 80, 1, 80)); add('station', cx, cz - 20); this.stationSign = [cx, cz - 20 + 17.2]; }
+        else if (bi === 2 && bj === 4) { parkLots.push(this.M(cx, 0.16, cz, 0, 80, 1, 80)); add('station', cx, cz - 20); this.stationSign = [cx, cz - 20 + 17]; }
         else {
           ballast.push(this.M(cx, 0.16, cz, 0, 80, 1, 80));
           for (let t = -3; t <= 3; t += 2) for (const o of [-0.72, 0.72]) rails.push(this.M(cx, 0.22, cz + t * 9 + o, 0, 78, 1, 1));
@@ -216,18 +206,12 @@ export class City {
     this.instanced(flat1(), new THREE.MeshStandardMaterial({ color: '#6b6258', roughness: 1 }), ballast);
     this.instanced(new THREE.BoxGeometry(1, 0.12, 0.12), new THREE.MeshStandardMaterial({ color: '#8a8f96', metalness: 0.6 }), rails);
 
-    for (const [id, mats] of Object.entries(place)) {
-      const a = ARCH[id], fd = facade(a.d, a.h, a, rand), fw = a.w === a.d ? fd : facade(a.w, a.h, a, rand);
-      const wallMat = (f) => {
-        const m = new THREE.MeshStandardMaterial({ map: f.map, emissiveMap: f.emissive, emissive: '#ffffff', emissiveIntensity: 0, roughness: 0.8 });
-        m.userData.max = 1.1; this.nightMats.push(m); return m;
-      };
-      const mD = wallMat(fd), mW = wallMat(fw), roof = new THREE.MeshStandardMaterial({ color: a.roof, roughness: 0.9 });
-      const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(a.w, a.h, a.d), [mD, mD, roof, roof, mW, mW], mats.length);
-      mats.forEach((m, i) => mesh.setMatrixAt(i, m));
-      mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false;
-      this.scene.add(mesh);
-    }
+    // bâtiments du kit fusionnés par zone et par matériau, détaillés de près, simplifiés au loin (assets/quality.js choisit selon la distance)
+    this.scene.add(K.cityOfTypes(Object.entries(place).map(([id, list]) => {
+      const a = ARCH[id], m = K.materials(a.m);
+      m.lit.userData.max = 1.4; m.shop.userData.max = 1.1; this.nightMats.push(m.lit, m.shop);
+      return { opts: { ...a, rand }, mats: m, places: list.map((M) => { const e = M.elements; return [e[12], e[13], e[14], Math.atan2(e[8], e[10])]; }) };
+    }), 240));
     // enseigne GARE
     if (this.stationSign) {
       const c = canvas(512, 96), g = c.getContext('2d');
@@ -235,7 +219,9 @@ export class City {
       const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
       const m = new THREE.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: '#fff', emissiveIntensity: 0.4 });
       const s = new THREE.Mesh(new THREE.PlaneGeometry(16, 3), m);
-      s.position.set(this.stationSign[0], 14, this.stationSign[1]); this.scene.add(s);
+      const fr = new THREE.Mesh(new THREE.BoxGeometry(18, 3.4, 0.5), new THREE.MeshStandardMaterial({ color: '#d8ccb0', roughness: 0.9 }));
+      fr.position.set(this.stationSign[0], 0.15 + 16.9 + 1.7, this.stationSign[1] - 0.25); fr.castShadow = true; this.scene.add(fr);
+      s.position.set(this.stationSign[0], 0.15 + 16.9 + 1.7, this.stationSign[1] + 0.02); this.scene.add(s);
     }
   }
 
